@@ -1,9 +1,13 @@
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class JsonParser {
+
+    private static final char MIN_JSON_CHARACTER = 0x20;
+
     private String json;
     private int position;
 
@@ -34,26 +38,35 @@ public class JsonParser {
 
         char current = json.charAt(position);
 
-        switch (current) {
-            case '{':
-                return parseObject();
-            case '[':
-                return parseArray();
-            case '"':
-                return parseString();
-            case 't':
-                return parseLiteral("true", Boolean.TRUE);
-            case 'f':
-                return parseLiteral("false", Boolean.FALSE);
-            case 'n':
-                return parseLiteral("null", null);
-            default:
-                if (current == '-' || isDigit(current)) {
-                    return parseNumber();
-                }
-                throw new IllegalArgumentException(
-                        "Некорректное значение JSON в позиции " + position);
+        if (current == '{') {
+            return parseObject();
         }
+        if (current == '[') {
+            return parseArray();
+        }
+        if (current == '"') {
+            return parseString();
+        }
+
+        return parsePrimitiveValue(current);
+    }
+
+    private Object parsePrimitiveValue(char current) {
+        if (current == 't') {
+            return parseLiteral("true", Boolean.TRUE);
+        }
+        if (current == 'f') {
+            return parseLiteral("false", Boolean.FALSE);
+        }
+        if (current == 'n') {
+            return parseLiteral("null", null);
+        }
+        if (current == '-' || isDigit(current)) {
+            return parseNumber();
+        }
+
+        throw new IllegalArgumentException(
+                "Некорректное значение JSON в позиции " + position);
     }
 
     private Map<String, Object> parseObject() {
@@ -66,15 +79,7 @@ public class JsonParser {
         }
 
         while (true) {
-            skipWhitespace();
-
-            if (position >= json.length() || json.charAt(position) != '"') {
-                throw new IllegalArgumentException(
-                        "Ожидалось имя свойства JSON");
-            }
-
-            String key = parseString();
-            skipWhitespace();
+            String key = parseObjectKey();
             expectCharacter(':');
 
             Object value = parseValue();
@@ -88,6 +93,17 @@ public class JsonParser {
 
             expectCharacter(',');
         }
+    }
+
+    private String parseObjectKey() {
+        skipWhitespace();
+
+        if (position >= json.length() || json.charAt(position) != '"') {
+            throw new IllegalArgumentException(
+                    "Ожидалось имя свойства JSON");
+        }
+
+        return parseString();
     }
 
     private List<Object> parseArray() {
@@ -140,40 +156,49 @@ public class JsonParser {
 
         char escaped = json.charAt(position++);
 
-        switch (escaped) {
-            case '"':
-            case '\\':
-            case '/':
-                result.append(escaped);
-                break;
-            case 'b':
-                result.append('\b');
-                break;
-            case 'f':
-                result.append('\f');
-                break;
-            case 'n':
-                result.append('\n');
-                break;
-            case 'r':
-                result.append('\r');
-                break;
-            case 't':
-                result.append('\t');
-                break;
-            case 'u':
-                result.append(parseUnicode());
-                break;
-            default:
-                throw new IllegalArgumentException(
-                        "Неизвестная escape-последовательность");
+        if (!appendSimpleEscape(result, escaped)) {
+            appendSpecialEscape(result, escaped);
         }
+    }
+
+    private boolean appendSimpleEscape(
+            StringBuilder result, char escaped) {
+
+        if (escaped == '"' || escaped == '\\' || escaped == '/') {
+            result.append(escaped);
+        } else if (escaped == 'b') {
+            result.append('\b');
+        } else if (escaped == 'f') {
+            result.append('\f');
+        } else if (escaped == 'n') {
+            result.append('\n');
+        } else if (escaped == 'r') {
+            result.append('\r');
+        } else if (escaped == 't') {
+            result.append('\t');
+        } else {
+            return false;
+        }
+
+        return true;
+    }
+
+    private void appendSpecialEscape(
+            StringBuilder result, char escaped) {
+
+        if (escaped == 'u') {
+            result.append(parseUnicode());
+            return;
+        }
+
+        throw new IllegalArgumentException(
+                "Неизвестная escape-последовательность");
     }
 
     private void appendRegularCharacter(
             StringBuilder result, char current) {
 
-        if (current < 0x20) {
+        if (current < MIN_JSON_CHARACTER) {
             throw new IllegalArgumentException(
                     "Недопустимый символ в JSON-строке");
         }
@@ -211,7 +236,8 @@ public class JsonParser {
         try {
             return Double.parseDouble(number);
         } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException("Некорректное число в JSON");
+            throw new IllegalArgumentException(
+                    "Некорректное число в JSON");
         }
     }
 
@@ -244,8 +270,7 @@ public class JsonParser {
 
     private void readExponentPart() {
         if (takeCharacter('e') || takeCharacter('E')) {
-            takeCharacter('+');
-            takeCharacter('-');
+            readExponentSign();
 
             if (position >= json.length() || !isDigit(json.charAt(position))) {
                 throw new IllegalArgumentException(
@@ -253,6 +278,12 @@ public class JsonParser {
             }
 
             readDigits();
+        }
+    }
+
+    private void readExponentSign() {
+        if (!takeCharacter('+')) {
+            takeCharacter('-');
         }
     }
 
