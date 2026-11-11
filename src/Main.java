@@ -1,3 +1,7 @@
+
+import java.io.IOException;
+import java.util.Map;
+
 public class Main {
 
     public static void main(String[] args) {
@@ -7,20 +11,45 @@ public class Main {
 
             ConfigValidator.validate(config);
 
-            printConfiguration(config);
+            PackageService packageService = new PackageService();
+
+            Map<String, String> dependencies =
+                    packageService.getDirectDependencies(config);
+
+            printDependencies(dependencies);
 
         } catch (IllegalArgumentException exception) {
-            System.out.println("Ошибка параметров: " + exception.getMessage());
+            System.out.println(
+                    "Ошибка параметров или данных: "
+                            + exception.getMessage());
+            System.exit(1);
+
+        } catch (IOException exception) {
+            System.out.println(
+                    "Ошибка получения данных: "
+                            + exception.getMessage());
             System.exit(1);
         }
     }
 
-    private static void printConfiguration(AppConfig config) {
-        System.out.println("Параметры запуска:");
-        System.out.println("package = " + config.getPackageName());
-        System.out.println("repository = " + config.getRepository());
-        System.out.println("test = " + config.isTestMode());
-        System.out.println("max-depth = " + config.getMaxDepth());
-        System.out.println("filter = " + config.getFilter());
+    private static void printDependencies(
+            Map<String, String> dependencies) {
+
+        System.out.println("Прямые зависимости пакета:");
+
+        if (dependencies.isEmpty()) {
+            System.out.println("Зависимости отсутствуют.");
+            return;
+        }
+
+        System.out.println(
+                "Количество зависимостей: " + dependencies.size());
+
+        for (Map.Entry<String, String> entry
+                : dependencies.entrySet()) {
+
+            System.out.println(
+                    entry.getKey() + " : " + entry.getValue());
+        }
     }
 }
