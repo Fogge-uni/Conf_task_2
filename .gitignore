@@ -1,4 +1,4 @@
 out/
 *.class
 .idea/
-*.imlgit rm --cached Conf2.iml
+*.iml
